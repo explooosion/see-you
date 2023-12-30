@@ -1,9 +1,176 @@
-import CustomMap from '@/components/map';
+'use client';
 
-export default function Map() {
+import { useRef, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+
+import { auth } from '@/config/firebase.config';
+import { IUser, getUsers, updatePosition } from '@/services/user';
+import CustomMap, { IMarkerObject } from '@/components/map';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+
+interface MapRef {
+  map: google.maps.Map;
+  markerObjs: IMarkerObject[];
+  setMarkerObjs: React.Dispatch<React.SetStateAction<IMarkerObject[]>>;
+  markerLibrary: google.maps.MarkerLibrary;
+}
+
+export default function Home() {
+  const mapRef = useRef<MapRef>(null);
+
+  const router = useRouter();
+
+  const [loadingMyLocation, setLoadingMyLocation] = useState(false);
+
+  const [position, setPosition] = useLocalStorage<GeolocationPosition | null>('position', null);
+
+  const [users, setUsers] = useState<IUser[]>([]);
+
+  const [isMinimized, setIsMinimized] = useState(true);
+
+  const [watchId, setWatchId] = useState<number | null>(null);
+
+  const onClickMarker = (user: IUser) => {
+    const { lat, lng } = user;
+    mapRef.current?.map.setCenter({ lat, lng });
+  };
+
+  const onClickMyLocation = () => {
+    try {
+      if (!navigator.geolocation) {
+        throw new Error(`Browser doesn't support Geolocation`);
+      }
+      if (!mapRef.current) {
+        throw new Error('mapRef is undefined');
+      }
+
+      setLoadingMyLocation(true);
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          if (auth.currentUser && auth.currentUser.uid) {
+            setPosition(position);
+            updatePosition(auth.currentUser!, position);
+          }
+          setLoadingMyLocation(false);
+        },
+        error => {
+          setLoadingMyLocation(false);
+          throw new Error(error.message);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 1000 * 3,
+        },
+      );
+    } catch (error: any) {
+      setLoadingMyLocation(false);
+      console.error(error.message);
+    }
+  };
+
+  const onClickLogout = async () => {
+    try {
+      await auth.signOut();
+      localStorage.clear();
+
+      if (watchId) {
+        setWatchId(null);
+        navigator.geolocation.clearWatch(watchId);
+      }
+
+      router.push('/login');
+    } catch (error: any) {
+      console.error(error.message);
+    }
+  };
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const fetchedUsers = await getUsers();
+        setUsers(fetchedUsers);
+        console.log('getUsers', fetchedUsers);
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+      }
+    };
+    fetchUsers();
+  }, [setPosition]);
+
+  useEffect(() => {
+    console.log('users', users);
+  }, [users]);
+
+  useEffect(() => {
+    setWatchId(
+      navigator.geolocation.watchPosition(
+        position => {
+          if (auth.currentUser && auth.currentUser.uid) {
+            setPosition(position);
+            updatePosition(auth.currentUser!, position);
+          }
+        },
+        console.error,
+        {
+          enableHighAccuracy: true,
+          timeout: 1000 * 3,
+          maximumAge: 1000 * 10,
+        },
+      ),
+    );
+  }, [setPosition]);
+
   return (
     <div>
-      <CustomMap />
+      <CustomMap ref={mapRef} users={users} />
+
+      <div className="fixed right-2 top-28 space-y-2">
+        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer active:bg-gray-400">
+          <span
+            className={`material-symbols-rounded ${loadingMyLocation ? 'animate-spin' : ''}`}
+            onClick={!loadingMyLocation ? onClickMyLocation : undefined}
+          >
+            {loadingMyLocation ? 'progress_activity' : 'my_location'}
+          </span>
+        </div>
+        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer active:bg-gray-400">
+          <span className="material-symbols-rounded" onClick={onClickLogout}>
+            logout
+          </span>
+        </div>
+      </div>
+
+      <div
+        className={`fixed bottom-0 w-full bg-white p-4 transition-all duration-500 ease-in-out rounded-t-xl ${
+          isMinimized ? 'bottom-[-240px]' : 'bottom-0'
+        }`}
+        style={{ height: '300px' }}
+      >
+        <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsMinimized(!isMinimized)}>
+          <h3 className="text-2xl font-bold">Friends</h3>
+          <span className={`material-symbols-rounded text-2xl transform ${isMinimized && 'rotate-180'} `}>
+            expand_more
+          </span>
+        </div>
+
+        <ul className="mt-5" style={{ height: '220px', overflow: 'auto' }}>
+          {users.map(user => (
+            <li
+              key={user.uid}
+              className="flex items-center space-x-4 py-1 cursor-pointer transition-all active:bg-gray-400"
+              onClick={() => onClickMarker(user)}
+            >
+              <Image src={user.photoURL} alt={user.displayName} width={40} height={40} className="rounded-full" />
+              <div>
+                <h4 className="text-lg font-medium">{user.displayName}</h4>
+                <p className="text-gray-500">{user.email}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
