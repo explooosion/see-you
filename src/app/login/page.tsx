@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAuth, signInWithRedirect, getRedirectResult, GoogleAuthProvider, User } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
 
 import { updatePosition, updateUser } from '@/services/user';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -42,28 +42,6 @@ export default function Login() {
     return () => unsubscribe();
   }, [position, router, setCurrentUser, auth]);
 
-  // 在您的组件或应用入口点中
-  useEffect(() => {
-    getRedirectResult(auth)
-      .then(result => {
-        const user = result?.user;
-        if (user) {
-          setCurrentUser(user);
-          updateUser(user);
-          if (position && user.uid) {
-            updatePosition(user, position);
-          }
-          router.push('/home');
-        } else {
-          setCurrentUser(null);
-        }
-      })
-      .catch(error => {
-        console.error('登入失敗', error);
-        alert(error);
-      });
-  }, [auth, router, setCurrentUser, position]);
-
   const onGoogleLogin = () => {
     const provider = new GoogleAuthProvider();
 
@@ -71,10 +49,21 @@ export default function Login() {
       prompt: 'select_account',
     });
 
-    signInWithRedirect(auth, provider).catch(error => {
-      console.error('登入失敗', error);
-      alert(error);
-    });
+    signInWithPopup(auth, provider)
+      .then(result => {
+        // Google 登录成功，用户信息在 result.user 中
+        const user = result.user;
+        setCurrentUser(user);
+        updateUser(user);
+        if (position && user.uid) {
+          updatePosition(user, position);
+        }
+        router.push('/home');
+      })
+      .catch(error => {
+        console.error('登录失败:', error);
+        alert('登录失败: ' + error.message);
+      });
   };
 
   return (
@@ -82,6 +71,11 @@ export default function Login() {
       <main className="flex min-h-screen flex-col items-center justify-center py-24">
         <div className="flex flex-col items-center">
           <h1 className="text-3xl font-bold mb-4">See You 登入</h1>
+          {position && position.coords && (
+            <p className="text-gray-500 text-sm mb-4">
+              {position.coords.latitude}, {position.coords.longitude}
+            </p>
+          )}
           <button
             className="bg-white text-gray-700 font-bold py-2 px-4 rounded border border-gray-300 shadow-sm hover:bg-gray-50 flex items-center"
             onClick={onGoogleLogin}
