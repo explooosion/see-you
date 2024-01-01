@@ -24,7 +24,7 @@ export const database = getDatabase(app);
 
 export const uiConfig = () => {
   return {
-    signInFlow: 'redirect', // popup
+    signInFlow: 'popup', // 'redirect', // 'popup'
     signInSuccessUrl: '/home',
     signInOptions: [
       // Leave the lines as is for the providers you want to offer your users.
@@ -47,8 +47,9 @@ export const uiConfig = () => {
     //   window.location.assign('<your-privacy-policy-url>');
     // },
     callbacks: {
-      // signInSuccessWithAuthResult: function (authResult, redirectUrl) {
-      //   router.push('/home'); // Redirect to /home on successful sign in
+      // signInSuccessWithAuthResult: function (authResult: any, redirectUrl: any) {
+      //   console.log('signInSuccessWithAuthResult');
+      //   redirectUrl.push('/home'); // Redirect to /home on successful sign in
       //   return false; // Prevent automatic redirect by FirebaseUI
       // },
       // uiShown: function () {
