@@ -5,10 +5,9 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 import { auth } from '@/config/firebase.config';
-import { IUser, subscribeToUsers, updatePosition } from '@/services/user';
+import { IUser, subscribeToUsers, updateUserPosition } from '@/services/user';
 import CustomMap, { MapRef } from '@/components/map';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { th } from 'date-fns/locale';
 
 export default function Home() {
   const mapRef = useRef<MapRef>(null);
@@ -38,19 +37,19 @@ export default function Home() {
     // 如果有手動更新過位置，則以手動更新的位置為主
     if (position) {
       mapRef.current?.map.setCenter({ lat: position.lat - 0.00002, lng: position.lng });
+      mapRef.current?.map.setZoom(20);
     }
 
     navigator.geolocation.getCurrentPosition(
       success => {
         if (auth.currentUser && auth.currentUser.uid) {
-          const position = {
+          const p = {
             lat: success.coords.latitude,
             lng: success.coords.longitude,
           };
-          setPosition(position);
-          updatePosition(auth.currentUser!, position);
-          mapRef.current?.map.setCenter({ lat: position.lat - 0.00002, lng: position.lng });
-          console.log('手動更新成功', position);
+          setPosition(p);
+          updateUserPosition(auth.currentUser!, p);
+          mapRef.current?.map.setCenter({ lat: p.lat - 0.00002, lng: p.lng });
         }
         setLoadingMyLocation(false);
       },
@@ -100,7 +99,7 @@ export default function Home() {
               lng: success.coords.longitude,
             };
             setPosition(position);
-            updatePosition(auth.currentUser!, position);
+            updateUserPosition(auth.currentUser!, position);
           }
         },
         console.error,

@@ -4,9 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAuth, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
 
-import { updatePosition, updateUser } from '@/services/user';
+import { updateUserPosition, updateUser } from '@/services/user';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { set } from 'date-fns';
 
 export default function Login() {
   const [loaded, setLoaded] = useState(false);
@@ -28,11 +27,11 @@ export default function Login() {
 
     navigator.geolocation.getCurrentPosition(
       success => {
-        const position = {
+        const p = {
           lat: success.coords.latitude,
           lng: success.coords.longitude,
         };
-        setPosition(position);
+        setPosition(p);
         setLoadingMyLocation(false);
       },
       error => {
@@ -59,7 +58,7 @@ export default function Login() {
         setCurrentUser(user);
         updateUser(user);
         if (position && user.uid) {
-          updatePosition(user, position);
+          updateUserPosition(user, position);
         }
         router.push('/home');
       } else {
@@ -84,7 +83,7 @@ export default function Login() {
         setCurrentUser(user);
         updateUser(user);
         if (position && user.uid) {
-          updatePosition(user, position);
+          updateUserPosition(user, position);
         }
         router.push('/home');
       })

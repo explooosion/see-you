@@ -24,14 +24,14 @@ export interface IUser {
  * @param user
  * @param position
  */
-export const setUser = async (user: User, position: GeolocationPosition) => {
+export const setUser = async (user: User, position: { lat: number; lng: number }) => {
   const payload = {
     uid: user.uid,
     email: user.email,
     displayName: user.displayName,
     photoURL: user.photoURL,
-    lat: position.coords.latitude,
-    lng: position.coords.longitude,
+    lat: position.lat,
+    lng: position.lng,
     updateAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
   };
   console.log('setUser', payload);
@@ -59,12 +59,12 @@ export const updateUser = async (user: User) => {
  * @param user
  * @param position
  */
-export const updatePosition = async (user: User, position: { lat: number; lng: number }) => {
+export const updateUserPosition = async (user: User, position: { lat: number; lng: number }) => {
   const payload = {
     ...position,
     updateAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
   };
-  console.log('updatePosition', payload);
+  console.log('updateUserPosition', payload);
   await update(ref(database, 'users/' + user.uid), payload);
 };
 
