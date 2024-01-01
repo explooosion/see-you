@@ -61,7 +61,7 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
   const [markersObjs, setMarkersObjs] = useState<IMarkerObject[]>([]);
   const [loadedMarkersObjs, setLoadedMarkersObjs] = useState(false);
 
-  const [position] = useLocalStorage<GeolocationPosition | null>('position', null);
+  const [position, setPosition] = useLocalStorage<{ lat: number; lng: number } | null>('position', null);
 
   /**
    * 設定標點的 z-index 最大值
@@ -81,48 +81,47 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
 
   // 初始化地圖
   useEffect(() => {
-    const initialMap = async () => {
-      const loader = new Loader({
-        apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string,
-        version: 'weekly',
-        libraries: ['places'],
-      });
+    if (!loadedMap && position) {
+      const initialMap = async () => {
+        const loader = new Loader({
+          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string,
+          version: 'weekly',
+          libraries: ['places'],
+        });
 
-      const [mapLibrary, markerLib, geometryLibrary] = await Promise.all([
-        loader.importLibrary('maps'),
-        loader.importLibrary('marker'),
-        loader.importLibrary('geometry'),
-      ]);
-      setMarkerLibrary(markerLib);
-      setGeometryLibrary(geometryLibrary);
+        const [mapLibrary, markerLib, geometryLibrary] = await Promise.all([
+          loader.importLibrary('maps'),
+          loader.importLibrary('marker'),
+          loader.importLibrary('geometry'),
+        ]);
+        setMarkerLibrary(markerLib);
+        setGeometryLibrary(geometryLibrary);
 
-      const initialPosition = {
-        lat: position?.coords.latitude || 24.2244632,
-        lng: position?.coords.longitude || 120.6468928,
+        const initialPosition = {
+          lat: position.lat - 0.00002,
+          lng: position.lng,
+        };
+
+        const userAgent = navigator.userAgent;
+        const isMobile = /mobile/i.test(userAgent);
+
+        const mapOptions: google.maps.MapOptions = {
+          center: initialPosition,
+          zoom: 20,
+          // maxZoom: 20,
+          // minZoom: 12,
+          fullscreenControl: false,
+          streetViewControl: false,
+          clickableIcons: false,
+          zoomControlOptions: {
+            position: google.maps.ControlPosition.TOP_RIGHT,
+          },
+          gestureHandling: isMobile ? 'greedy' : 'auto', // Enable one-finger touch gesture
+        };
+
+        setMap(new mapLibrary.Map(mapRef.current as HTMLDivElement, mapOptions));
+        setLoadedMap(true);
       };
-
-      const userAgent = navigator.userAgent;
-      const isMobile = /mobile/i.test(userAgent);
-
-      const mapOptions: google.maps.MapOptions = {
-        center: initialPosition,
-        zoom: 20,
-        // maxZoom: 20,
-        // minZoom: 12,
-        fullscreenControl: false,
-        streetViewControl: false,
-        clickableIcons: false,
-        zoomControlOptions: {
-          position: google.maps.ControlPosition.TOP_RIGHT,
-        },
-        gestureHandling: isMobile ? 'greedy' : 'auto', // Enable one-finger touch gesture
-      };
-
-      setMap(new mapLibrary.Map(mapRef.current as HTMLDivElement, mapOptions));
-      setLoadedMap(true);
-    };
-
-    if (!loadedMap) {
       initialMap();
     }
   }, [loadedMap, position]);
