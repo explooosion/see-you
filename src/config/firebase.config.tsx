@@ -22,6 +22,9 @@ export const auth = getAuth(app);
 
 export const database = getDatabase(app);
 
+/**
+ * @deprecated
+ */
 export const uiConfig = () => {
   return {
     signInFlow: 'popup', // 'redirect', // 'popup'
