@@ -60,7 +60,7 @@ export default function Login() {
       })
       .catch(error => {
         console.error('登入失敗', error);
-        throw new Error(error);
+        alert(error);
       });
   }, [auth, router, setCurrentUser, position]);
 
@@ -73,7 +73,7 @@ export default function Login() {
 
     signInWithRedirect(auth, provider).catch(error => {
       console.error('登入失敗', error);
-      throw new Error(error);
+      alert(error);
     });
   };
 

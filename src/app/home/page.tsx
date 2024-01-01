@@ -8,6 +8,7 @@ import { auth } from '@/config/firebase.config';
 import { IUser, subscribeToUsers, updatePosition } from '@/services/user';
 import CustomMap, { MapRef } from '@/components/map';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { th } from 'date-fns/locale';
 
 export default function Home() {
   const mapRef = useRef<MapRef>(null);
@@ -73,6 +74,7 @@ export default function Home() {
       router.push('/login');
     } catch (error: any) {
       console.error(error.message);
+      alert(error.message);
     }
   };
 
