@@ -59,10 +59,9 @@ export const updateUser = async (user: User) => {
  * @param user
  * @param position
  */
-export const updatePosition = async (user: User, position: GeolocationPosition) => {
+export const updatePosition = async (user: User, position: { lat: number; lng: number }) => {
   const payload = {
-    lat: position.coords.latitude,
-    lng: position.coords.longitude,
+    ...position,
     updateAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
   };
   console.log('updatePosition', payload);

@@ -17,7 +17,7 @@ export default function Home() {
 
   const [loadingMyLocation, setLoadingMyLocation] = useState(false);
 
-  const [position, setPosition] = useLocalStorage<GeolocationPosition | null>('position', null);
+  const [position, setPosition] = useLocalStorage<{ lat: number; lng: number } | null>('position', null);
 
   const [users, setUsers] = useState<IUser[]>([]);
 
@@ -25,28 +25,32 @@ export default function Home() {
 
   const [watchId, setWatchId] = useState<number | null>(null);
 
-  const onClickMarker = (user: IUser) => {
+  const onClickUser = (user: IUser) => {
     const { lat, lng } = user;
-    mapRef.current?.map.panTo({ lat, lng });
+    // 由於下方用戶列表會擋住畫面，因此做 lat 的微調
+    mapRef.current?.map.panTo({ lat: lat - 0.00002, lng });
     mapRef.current?.setZIndexMax(mapRef.current?.markersObjs || [], user);
   };
 
   const onClickMyLocation = () => {
-    if (!navigator.geolocation) {
-      throw new Error(`Browser doesn't support Geolocation`);
-    }
-    if (!mapRef.current) {
-      throw new Error('mapRef is undefined');
-    }
-
     setLoadingMyLocation(true);
 
+    // 如果有手動更新過位置，則以手動更新的位置為主
+    if (position) {
+      mapRef.current?.map.setCenter({ lat: position.lat - 0.00002, lng: position.lng });
+    }
+
     navigator.geolocation.getCurrentPosition(
-      position => {
+      success => {
         if (auth.currentUser && auth.currentUser.uid) {
+          const position = {
+            lat: success.coords.latitude,
+            lng: success.coords.longitude,
+          };
           setPosition(position);
           updatePosition(auth.currentUser!, position);
-          mapRef.current?.map.setCenter({ lat: position.coords.latitude, lng: position.coords.longitude });
+          mapRef.current?.map.setCenter({ lat: position.lat - 0.00002, lng: position.lng });
+          console.log('手動更新成功', position);
         }
         setLoadingMyLocation(false);
       },
@@ -89,8 +93,12 @@ export default function Home() {
   useEffect(() => {
     setWatchId(
       navigator.geolocation.watchPosition(
-        position => {
+        success => {
           if (auth.currentUser && auth.currentUser.uid) {
+            const position = {
+              lat: success.coords.latitude,
+              lng: success.coords.longitude,
+            };
             setPosition(position);
             updatePosition(auth.currentUser!, position);
           }
@@ -153,7 +161,7 @@ export default function Home() {
               <li
                 key={user.uid}
                 className="flex items-center space-x-4 px-2 py-1 cursor-pointer transition-all active:bg-gray-300"
-                onClick={() => onClickMarker(user)}
+                onClick={() => onClickUser(user)}
               >
                 <Image src={user.photoURL} alt={user.displayName} width={40} height={40} className="rounded-full" />
                 <div>
