@@ -44,7 +44,7 @@ export const uiConfig = () => {
     // tosUrl: '/',
     // Privacy policy url/callback.
     // privacyPolicyUrl: function () {
-    //   window.location.assign('<your-privacy-policy-url>');
+    //   location.assign('<your-privacy-policy-url>');
     // },
     callbacks: {
       // signInSuccessWithAuthResult: function (authResult: any, redirectUrl: any) {
