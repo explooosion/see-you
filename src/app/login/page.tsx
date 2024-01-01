@@ -22,17 +22,16 @@ export default function Login() {
     return loaded && !currentUser;
   }, [loaded, currentUser]);
 
+  // 更新使用者位置
   useEffect(() => {
-    if (!navigator.geolocation) {
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(position => {
-      console.log('getCurrentPosition', position);
-      setPosition(position);
+    navigator.geolocation.getCurrentPosition(_position => {
+      if (position !== _position) {
+        setPosition(_position);
+      }
     });
-  }, [setPosition]);
+  }, [setPosition, position]);
 
+  // 登入後跳轉
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
       setLoaded(true);
@@ -45,6 +44,7 @@ export default function Login() {
           updatePosition(user, position);
         }
 
+        console.log('登入完畢後跳轉', user);
         router.push('/home');
       } else {
         setCurrentUser(null);
@@ -60,9 +60,9 @@ export default function Login() {
   }, [position, router, setCurrentUser]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+    <main className="flex min-h-screen flex-col items-center justify-between py-24">
       <div className="flex flex-col items-center">
-        <h1 className="text-3xl font-bold mb-4">{isReadyLogin && '登入'}</h1>
+        <h1 className="text-3xl font-bold mb-4">{isReadyLogin ? 'See You 登入' : '資料載入中...'}</h1>
         <div id="firebaseui-auth-container" className={loaded ? '' : 'hidden'}></div>
       </div>
     </main>
