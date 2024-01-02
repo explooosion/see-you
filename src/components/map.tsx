@@ -59,6 +59,11 @@ export interface MapRef {
   setWatchId: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
+/**
+ * 用於調整經度的間隔，使畫面中心不會偏移
+ */
+export const LatGapCenter = 0.00005;
+
 const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
   const mapRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +116,7 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
         setGeometryLibrary(geometryLibrary);
 
         const center = {
-          lat: position.lat - 0.00005,
+          lat: position.lat - LatGapCenter,
           lng: position.lng,
         };
 
@@ -190,7 +195,7 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
           // 設定標點的 z-index 最大值
           setZIndexMax(markersObjects, currentUser);
           // 移動地圖到使用者位置
-          map.panTo({ lat: currentUser.lat - 0.00005, lng: currentUser.lng });
+          map.panTo({ lat: currentUser.lat - LatGapCenter, lng: currentUser.lng });
           console.log('map.objects.initial.complete', markersObjects);
         }
       };
@@ -201,7 +206,7 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
 
   // 更新標點或者刪除標點
   useEffect(() => {
-    if (loadedMarkersObjs && map && auth.currentUser) {
+    if (loadedMarkersObjs && map) {
       // 比對 database.users 和 state.markersObjs[n].user 差異，進行更新或刪除
       markersObjs.forEach(markerObjs => {
         const { user } = markerObjs;
@@ -216,12 +221,11 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
           // 刪除標點
           markerObjs.marker.setMap(null);
           markerObjs.circle?.setMap(null);
-          markerObjs.user = null as any;
         }
       });
 
       // 移動至追蹤者位置
-      map.panTo({ lat: watchUser.lat - 0.00005, lng: watchUser.lng });
+      map.panTo({ lat: watchUser.lat - LatGapCenter, lng: watchUser.lng });
       // 設定標點的 z-index 最大值
       setZIndexMax(markersObjs, watchUser);
 
@@ -251,7 +255,7 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
               // 更新 currentUser 座標
               updateUserPosition(currentUser, p);
               // 移動至追蹤者位置
-              map.panTo({ lat: watchUser.lat - 0.00005, lng: watchUser.lng });
+              map.panTo({ lat: watchUser.lat - LatGapCenter, lng: watchUser.lng });
               // 設定標點的 z-index 最大值
               setZIndexMax(markersObjs, watchUser);
               console.log('map.watchPosition.complete', distance, p);
@@ -263,8 +267,8 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
         },
         {
           enableHighAccuracy: false,
-          timeout: 1000 * 10,
-          maximumAge: 1000 * 60,
+          timeout: 1000 * 30,
+          maximumAge: 1000 * 30,
         }
       )
     );

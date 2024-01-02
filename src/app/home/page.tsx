@@ -1,12 +1,12 @@
 'use client';
 
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 import { auth } from '@/config/firebase.config';
-import { IUser, IPosition, IGoogleUser, subscribeToUsers, updateUserPosition } from '@/services/firebase';
-import CustomMap, { MapRef } from '@/components/map';
+import { IUser, IGoogleUser, subscribeToUsers } from '@/services/firebase';
+import CustomMap, { MapRef, LatGapCenter } from '@/components/map';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 export default function Home() {
@@ -14,9 +14,7 @@ export default function Home() {
 
   const router = useRouter();
 
-  const [loadingMyLocation, setLoadingMyLocation] = useState(false);
-
-  const [position, setPosition] = useLocalStorage<IPosition | null>('position', null);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   const [googleUser, setGoogleUser] = useLocalStorage<IGoogleUser | null>('user', null);
 
@@ -24,62 +22,46 @@ export default function Home() {
 
   const [currentUser, setCurrentUser] = useState<IUser>();
 
-  const [isMinimized, setIsMinimized] = useState(false);
-
   const [watchUser, setWatchUser] = useState<IUser>();
+
+  const [unsubscribe, setUnsubscribe] = useState<() => void>();
 
   const onMapToUser = (user: IUser) => {
     if (mapRef.current) {
       const { lat, lng } = user;
       // 由於下方用戶列表會擋住畫面，因此做 lat 的微調
-      mapRef.current.map.panTo({ lat: lat - 0.00005, lng });
+      mapRef.current.map.panTo({ lat: lat - LatGapCenter, lng });
       mapRef.current.setZIndexMax(mapRef.current.markersObjs, user);
       // 監控選擇的用戶
       setWatchUser(user);
     }
   };
 
-  const onUpdateMyLocation = () => {
-    setLoadingMyLocation(true);
-
-    // 從瀏覽器定位取得位置
-    navigator.geolocation.getCurrentPosition(
-      success => {
-        if (mapRef.current && currentUser) {
-          const p = {
-            lat: success.coords.latitude,
-            lng: success.coords.longitude,
-          };
-          setPosition(p);
-          setWatchUser(currentUser);
-
-          updateUserPosition(currentUser, p);
-
-          mapRef.current.map.setCenter({ lat: p.lat - 0.00005, lng: p.lng });
-          mapRef.current.setZIndexMax(mapRef.current.markersObjs, currentUser);
-        }
-        setLoadingMyLocation(false);
-      },
-      error => {
-        setLoadingMyLocation(false);
-        console.error(error);
-      },
-      {
-        enableHighAccuracy: false,
-        timeout: 1000 * 10,
-        // maximumAge: 1000 * 10,
-      }
-    );
+  const onWatchMyLocation = () => {
+    if (mapRef.current && currentUser) {
+      setWatchUser(currentUser);
+      mapRef.current.map.setCenter({ lat: currentUser.lat - LatGapCenter, lng: currentUser.lng });
+      mapRef.current.setZIndexMax(mapRef.current.markersObjs, currentUser);
+    }
   };
 
   const onClickLogout = async () => {
     try {
+      const confirmed = window.confirm('你確定要登出嗎？');
+      if (!confirmed) {
+        return;
+      }
+
       await auth.signOut();
       localStorage.clear();
 
       if (mapRef.current && mapRef.current.watchId) {
         navigator.geolocation.clearWatch(mapRef.current.watchId);
         mapRef.current.setWatchId(null);
+      }
+
+      if (unsubscribe) {
+        unsubscribe();
       }
 
       router.push('/login');
@@ -90,19 +72,27 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const unsubscribe = subscribeToUsers(newUsers => {
-      console.log('home.subscribeToUsers.complete', newUsers);
-      setUsers(newUsers);
+    setUnsubscribe(
+      subscribeToUsers(newUsers => {
+        setUsers(newUsers);
+        console.log('home.subscribeToUsers.complete', newUsers);
 
-      // 如果 currentUser 沒數據，則設置為 auth.currentUser
-      if (!currentUser) {
-        const cuser = newUsers.find(u => u.uid === auth.currentUser?.uid);
-        setCurrentUser(cuser);
-        setWatchUser(cuser);
-      }
-    });
-    return () => unsubscribe();
-  }, [setUsers, watchUser, currentUser]);
+        // 如果 currentUser 沒數據，則設置為 auth.currentUser
+        if (!currentUser) {
+          const cuser = newUsers.find(u => u.uid === auth.currentUser?.uid);
+          setCurrentUser(cuser);
+        }
+      })
+    );
+    return () => unsubscribe && unsubscribe();
+  }, [setUsers, currentUser, unsubscribe]);
+
+  // 如果 watchUser 沒數據，則設置為 currentUser
+  useEffect(() => {
+    if (currentUser && !watchUser) {
+      setWatchUser(currentUser);
+    }
+  }, [currentUser, watchUser]);
 
   // 如果 googleUser 沒數據則跳轉到登入頁
   useEffect(() => {
@@ -114,15 +104,12 @@ export default function Home() {
   const renderMapControls = () => {
     return (
       <div className="fixed right-2 top-28 space-y-2">
-        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer">
-          <span
-            className={`material-symbols-rounded ${loadingMyLocation ? 'animate-spin' : ''}`}
-            onClick={!loadingMyLocation ? onUpdateMyLocation : undefined}
-          >
-            {loadingMyLocation ? 'progress_activity' : 'my_location'}
+        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm cursor-pointer bg-white transition-all active:bg-gray-300">
+          <span className="material-symbols-rounded" onClick={onWatchMyLocation}>
+            my_location
           </span>
         </div>
-        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer">
+        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm cursor-pointer bg-white transition-all active:bg-gray-300">
           <span className="material-symbols-rounded" onClick={onClickLogout}>
             logout
           </span>
