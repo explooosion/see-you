@@ -7,15 +7,22 @@ import { format } from 'date-fns';
 import { database } from '@/config/firebase.config';
 
 /**
- * 使用者資料
+ * Google 使用者資料
  */
-export interface IUser {
-  uid: string;
-  email: string;
-  displayName: string;
-  photoURL: string;
+export type IGoogleUser = Pick<User, 'uid' | 'email' | 'displayName' | 'photoURL'>;
+
+/**
+ * 使用者位置
+ */
+export interface IPosition {
   lat: number;
   lng: number;
+}
+
+/**
+ * 使用者資料
+ */
+export interface IUser extends IGoogleUser, IPosition {
   updateAt: string;
 }
 
@@ -24,7 +31,7 @@ export interface IUser {
  * @param user
  * @param position
  */
-export const setUser = async (user: User, position: { lat: number; lng: number }) => {
+export const setUser = async (user: User, position: IPosition) => {
   const payload = {
     uid: user.uid,
     email: user.email,
@@ -34,7 +41,7 @@ export const setUser = async (user: User, position: { lat: number; lng: number }
     lng: position.lng,
     updateAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
   };
-  console.log('setUser', payload);
+  console.log('firebase.setUser', payload);
   await set(ref(database, 'users/' + user.uid), payload);
 };
 
@@ -42,15 +49,16 @@ export const setUser = async (user: User, position: { lat: number; lng: number }
  * 更新使用者資料
  * @param user
  */
-export const updateUser = async (user: User) => {
+export const updateUser = async (user: User, position?: IPosition) => {
   const payload = {
     uid: user.uid,
     email: user.email,
     displayName: user.displayName,
     photoURL: user.photoURL,
+    ...position,
     updateAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
   };
-  console.log('updateUser', payload);
+  console.log('firebase.updateUser', payload);
   await update(ref(database, 'users/' + user.uid), payload);
 };
 
@@ -59,12 +67,12 @@ export const updateUser = async (user: User) => {
  * @param user
  * @param position
  */
-export const updateUserPosition = async (user: User, position: { lat: number; lng: number }) => {
+export const updateUserPosition = async (user: User, position: IPosition) => {
   const payload = {
     ...position,
     updateAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
   };
-  console.log('updateUserPosition', payload);
+  console.log('firebase.updateUserPosition', payload);
   await update(ref(database, 'users/' + user.uid), payload);
 };
 
@@ -76,7 +84,9 @@ export const updateUserPosition = async (user: User, position: { lat: number; ln
 export const getUser = async (uid: string): Promise<IUser | null> => {
   const snapshot = await get(ref(database, 'users/' + uid));
   if (snapshot.exists()) {
-    return snapshot.val();
+    const data = snapshot.val() ?? {};
+    console.log('firebase.getUser', data);
+    return data;
   } else {
     return null;
   }
@@ -90,6 +100,7 @@ export const getUsers = async (): Promise<IUser[]> => {
   const snapshot = await get(ref(database, 'users'));
   if (snapshot.exists()) {
     const data = snapshot.val() ?? {};
+    console.log('firebase.getUsers', data);
     return Object.values(data);
   } else {
     return [];
@@ -101,6 +112,7 @@ export const getUsers = async (): Promise<IUser[]> => {
  * @param uid
  */
 export const removeUser = async (uid: string) => {
+  console.log('firebase.removeUser', uid);
   await remove(ref(database, 'users/' + uid));
 };
 
@@ -114,6 +126,7 @@ export const subscribeToUsers = (callback: (users: IUser[]) => void): (() => voi
   const unsubscribe = onValue(usersRef, snapshot => {
     if (snapshot.exists()) {
       const data = snapshot.val() ?? {};
+      console.log('firebase.subscribeToUsers', data);
       callback(Object.values(data));
     } else {
       callback([]);

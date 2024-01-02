@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
 
-import { updateUser } from '@/services/user';
+import { updateUser } from '@/services/firebase';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_API_KEY,
@@ -20,10 +20,3 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 export const database = getDatabase(app);
-
-auth.onAuthStateChanged(user => {
-  if (user && user.uid) {
-    console.log('firebase.config.tsx_onAuthStateChanged', user);
-    updateUser(user);
-  }
-});

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 import { auth } from '@/config/firebase.config';
-import { IUser, subscribeToUsers, updateUserPosition } from '@/services/user';
+import { IUser, IPosition, IGoogleUser, subscribeToUsers, updateUserPosition } from '@/services/firebase';
 import CustomMap, { MapRef } from '@/components/map';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
@@ -16,30 +16,33 @@ export default function Home() {
 
   const [loadingMyLocation, setLoadingMyLocation] = useState(false);
 
-  const [position, setPosition] = useLocalStorage<{ lat: number; lng: number } | null>('position', null);
+  const [position, setPosition] = useLocalStorage<IPosition | null>('position', null);
+
+  const [googleUser, setGoogleUser] = useLocalStorage<IGoogleUser | null>('user', null);
 
   const [users, setUsers] = useState<IUser[]>([]);
 
   const [isMinimized, setIsMinimized] = useState(false);
 
-  const [watchId, setWatchId] = useState<number | null>(null);
-
-  const onClickUser = (user: IUser) => {
-    const { lat, lng } = user;
-    // 由於下方用戶列表會擋住畫面，因此做 lat 的微調
-    mapRef.current?.map.panTo({ lat: lat - 0.00002, lng });
-    mapRef.current?.setZIndexMax(mapRef.current?.markersObjs || [], user);
+  const onMapToUser = (user: IUser) => {
+    if (mapRef.current) {
+      const { lat, lng } = user;
+      // 由於下方用戶列表會擋住畫面，因此做 lat 的微調
+      mapRef.current.map.panTo({ lat: lat - 0.00002, lng });
+      mapRef.current.setZIndexMax(mapRef.current.markersObjs, user);
+    }
   };
 
-  const onClickMyLocation = () => {
+  const onUpdateMyLocation = () => {
     setLoadingMyLocation(true);
 
     // 如果有手動更新過位置，則以手動更新的位置為主
-    if (position) {
-      mapRef.current?.map.setCenter({ lat: position.lat - 0.00002, lng: position.lng });
-      mapRef.current?.map.setZoom(20);
+    if (mapRef.current && position) {
+      mapRef.current.map.setCenter({ lat: position.lat - 0.00002, lng: position.lng });
+      mapRef.current.map.setZoom(20);
     }
 
+    // 從瀏覽器定位取得位置
     navigator.geolocation.getCurrentPosition(
       success => {
         if (auth.currentUser && auth.currentUser.uid) {
@@ -53,12 +56,13 @@ export default function Home() {
         }
         setLoadingMyLocation(false);
       },
-      () => {
+      error => {
         setLoadingMyLocation(false);
+        console.error(error);
       },
       {
         enableHighAccuracy: false,
-        timeout: 1000 * 10,
+        timeout: 1000 * 5,
         // maximumAge: 1000 * 10,
       }
     );
@@ -69,109 +73,130 @@ export default function Home() {
       await auth.signOut();
       localStorage.clear();
 
-      if (watchId) {
-        setWatchId(null);
-        navigator.geolocation.clearWatch(watchId);
+      if (mapRef.current && mapRef.current.watchId) {
+        navigator.geolocation.clearWatch(mapRef.current.watchId);
+        mapRef.current.setWatchId(null);
       }
 
       router.push('/login');
     } catch (error: any) {
-      console.error(error.message);
+      console.error('home.signOut.error', error.message);
       alert(error.message);
     }
   };
 
   useEffect(() => {
     const unsubscribe = subscribeToUsers(newUsers => {
+      console.log('home.subscribeToUsers.complete', newUsers);
       setUsers(newUsers);
     });
-
     return () => unsubscribe();
   }, [setUsers]);
 
+  // 如果 googleUser 沒數據則跳轉到登入頁
   useEffect(() => {
-    setWatchId(
-      navigator.geolocation.watchPosition(
-        success => {
-          if (auth.currentUser && auth.currentUser.uid) {
-            const position = {
-              lat: success.coords.latitude,
-              lng: success.coords.longitude,
-            };
-            setPosition(position);
-            updateUserPosition(auth.currentUser!, position);
-          }
-        },
-        console.error,
-        {
-          enableHighAccuracy: false,
-          timeout: 1000 * 10,
-          maximumAge: 1000 * 60,
-        }
-      )
-    );
-  }, [setPosition]);
-
-  useEffect(() => {
-    if (!auth.currentUser) {
+    if (!googleUser) {
       router.push('/login');
     }
-  }, [router]);
+  }, [googleUser, router]);
+
+  const renderMapControls = () => {
+    return (
+      <div className="fixed right-2 top-28 space-y-2">
+        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer">
+          <span
+            className={`material-symbols-rounded ${loadingMyLocation ? 'animate-spin' : ''}`}
+            onClick={!loadingMyLocation ? onUpdateMyLocation : undefined}
+          >
+            {loadingMyLocation ? 'progress_activity' : 'my_location'}
+          </span>
+        </div>
+        <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer">
+          <span className="material-symbols-rounded" onClick={onClickLogout}>
+            logout
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderUser = (user: IUser) => {
+    return (
+      <li
+        key={user.uid}
+        className="flex items-center space-x-4 px-2 py-1 cursor-pointer transition-all active:bg-gray-300"
+        onClick={() => onMapToUser(user)}
+      >
+        {user.photoURL && (
+          <Image src={user.photoURL} alt={user.photoURL} width={40} height={40} className="rounded-full" />
+        )}
+        <div>
+          <div className="text-md font-medium">{user.displayName}</div>
+          <div className="text-sm text-gray-500">{user.email}</div>
+          <div className="text-xs text-gray-400">{user.updateAt}</div>
+        </div>
+      </li>
+    );
+  };
+
+  const renderUserList = () => {
+    // 找到 currentUser 的資料
+    const currentUser = users.find(user => user.uid === auth.currentUser?.uid);
+
+    // 將 currentUser 設置為第一筆，並且依照相鄰距離排序
+    const usersSorted = currentUser
+      ? [
+          currentUser,
+          ...users
+            // 排除 currentUser
+            .filter(user => user.uid !== auth.currentUser?.uid)
+            // 依照 currentUser 的 lat,lng 相鄰距離排序
+            .sort((a, b) => {
+              // 使用 computeDistanceBetween 計算距離
+              if (mapRef.current && mapRef.current.geometryLibrary) {
+                const aDistance = mapRef.current.geometryLibrary.spherical.computeDistanceBetween(
+                  new google.maps.LatLng(a.lat, a.lng),
+                  new google.maps.LatLng(currentUser!.lat, currentUser!.lng)
+                );
+                const bDistance = mapRef.current.geometryLibrary.spherical.computeDistanceBetween(
+                  new google.maps.LatLng(b.lat, b.lng),
+                  new google.maps.LatLng(currentUser!.lat, currentUser!.lng)
+                );
+                return aDistance - bDistance;
+              } else {
+                return 0;
+              }
+            }),
+        ]
+      : users;
+
+    return (
+      <div
+        className={`fixed bottom-0 w-full bg-white p-4 transition-all duration-500 ease-in-out rounded-t-xl ${
+          isMinimized ? 'bottom-[-240px]' : 'bottom-0'
+        }`}
+        style={{ height: '300px' }}
+      >
+        <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsMinimized(!isMinimized)}>
+          <h3 className="text-2xl font-bold">小圈圈列表</h3>
+          <span className={`material-symbols-rounded text-2xl transform ${isMinimized && 'rotate-180'} `}>
+            expand_more
+          </span>
+        </div>
+
+        <ul className="mt-5" style={{ height: '220px', overflow: 'auto' }}>
+          {usersSorted.map(user => renderUser(user))}
+        </ul>
+      </div>
+    );
+  };
 
   return (
     auth.currentUser && (
       <div>
         <CustomMap ref={mapRef} users={users} />
-
-        <div className="fixed right-2 top-28 space-y-2">
-          <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer">
-            <span
-              className={`material-symbols-rounded ${loadingMyLocation ? 'animate-spin' : ''}`}
-              onClick={!loadingMyLocation ? onClickMyLocation : undefined}
-            >
-              {loadingMyLocation ? 'progress_activity' : 'my_location'}
-            </span>
-          </div>
-          <div className="flex justify-center items-center w-[40px] h-[40px] rounded-sm bg-white cursor-pointer">
-            <span className="material-symbols-rounded" onClick={onClickLogout}>
-              logout
-            </span>
-          </div>
-        </div>
-
-        <div
-          className={`fixed bottom-0 w-full bg-white p-4 transition-all duration-500 ease-in-out rounded-t-xl ${
-            isMinimized ? 'bottom-[-240px]' : 'bottom-0'
-          }`}
-          style={{ height: '300px' }}
-        >
-          <div
-            className="flex items-center justify-between cursor-pointer"
-            onClick={() => setIsMinimized(!isMinimized)}
-          >
-            <h3 className="text-2xl font-bold">朋友列表</h3>
-            <span className={`material-symbols-rounded text-2xl transform ${isMinimized && 'rotate-180'} `}>
-              expand_more
-            </span>
-          </div>
-
-          <ul className="mt-5" style={{ height: '220px', overflow: 'auto' }}>
-            {users.map(user => (
-              <li
-                key={user.uid}
-                className="flex items-center space-x-4 px-2 py-1 cursor-pointer transition-all active:bg-gray-300"
-                onClick={() => onClickUser(user)}
-              >
-                <Image src={user.photoURL} alt={user.displayName} width={40} height={40} className="rounded-full" />
-                <div>
-                  <div className="text-md font-medium">{user.displayName}</div>
-                  <div className="text-sm text-gray-500">{user.email}</div>
-                  <div className="text-xs text-gray-400">{user.updateAt}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {renderMapControls()}
+        {renderUserList()}
       </div>
     )
   );

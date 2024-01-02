@@ -2,15 +2,15 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAuth, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
-import { updateUserPosition, updateUser } from '@/services/user';
+import { IGoogleUser, IPosition, updateUserPosition, updateUser } from '@/services/firebase';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 export default function Login() {
   const [loaded, setLoaded] = useState(false);
-  const [position, setPosition] = useLocalStorage<{ lat: number; lng: number } | null>('position', null);
-  const [currentUser, setCurrentUser] = useLocalStorage<User | null>('user', null);
+  const [position, setPosition] = useLocalStorage<IPosition | null>('position', null);
+  const [googleUser, setGoogleUser] = useLocalStorage<IGoogleUser | null>('user', null);
 
   const [loadingMyLocation, setLoadingMyLocation] = useState(false);
   const [error, setError] = useState<string>('');
@@ -35,6 +35,7 @@ export default function Login() {
         setLoadingMyLocation(false);
       },
       error => {
+        console.error('login.getCurrentPosition.error', error);
         setError(error.message);
         setLoadingMyLocation(false);
       },
@@ -52,22 +53,27 @@ export default function Login() {
   }, [onGetCurrentPosition, setPosition]);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(user => {
-      setLoaded(true);
-      if (user) {
-        setCurrentUser(user);
-        updateUser(user);
-        if (position && user.uid) {
-          updateUserPosition(user, position);
+    if (!loaded) {
+      const unsubscribe = auth.onAuthStateChanged(user => {
+        if (user && user?.uid) {
+          const payload = {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+          };
+          setGoogleUser(payload);
+          setLoaded(true);
+          updateUser(Object.assign(user, position));
+          router.push('/home');
+        } else {
+          setLoaded(true);
         }
-        router.push('/home');
-      } else {
-        setCurrentUser(null);
-      }
-    });
+      });
 
-    return () => unsubscribe();
-  }, [position, router, setCurrentUser, auth]);
+      return () => unsubscribe();
+    }
+  }, [position, router, setGoogleUser, auth, loaded]);
 
   const onGoogleLogin = () => {
     const provider = new GoogleAuthProvider();
@@ -80,7 +86,7 @@ export default function Login() {
       .then(result => {
         // Google 登录成功，用户信息在 result.user 中
         const user = result.user;
-        setCurrentUser(user);
+        setGoogleUser(user);
         updateUser(user);
         if (position && user.uid) {
           updateUserPosition(user, position);
@@ -88,8 +94,8 @@ export default function Login() {
         router.push('/home');
       })
       .catch(error => {
-        console.error('登录失败:', error);
-        alert('登录失败: ' + error.message);
+        console.error('login.signInWithPopup.error', error);
+        alert('登入失敗' + error.message);
       });
   };
 
@@ -152,8 +158,11 @@ export default function Login() {
     );
   };
 
+  if (!loaded && !auth.currentUser) return;
+
   return (
-    loaded && (
+    loaded &&
+    !auth.currentUser && (
       <main className="flex min-h-screen flex-col items-center justify-center py-24">
         <div className="flex flex-col items-center">
           <h1 className="text-3xl font-bold mb-4">See You</h1>

@@ -6,7 +6,7 @@ import { User } from 'firebase/auth';
 
 import { auth } from '@/config/firebase.config';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { IUser } from '@/services/user';
+import { IUser, IPosition, updateUserPosition } from '@/services/firebase';
 import { createCircleImageFromUrl } from '@/utils';
 
 type MapProps = {
@@ -47,6 +47,14 @@ export interface MapRef {
    * Google Map Geometry Library
    */
   geometryLibrary: google.maps.GeometryLibrary;
+  /**
+   * Map Component 的 watchId
+   */
+  watchId: number | null;
+  /**
+   * Map Component 的 watchId
+   */
+  setWatchId: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
 const Map = forwardRef(({ users }: MapProps, ref) => {
@@ -61,7 +69,9 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
   const [markersObjs, setMarkersObjs] = useState<IMarkerObject[]>([]);
   const [loadedMarkersObjs, setLoadedMarkersObjs] = useState(false);
 
-  const [position, setPosition] = useLocalStorage<{ lat: number; lng: number } | null>('position', null);
+  const [position, setPosition] = useLocalStorage<IPosition | null>('position', null);
+
+  const [watchId, setWatchId] = useState<number | null>(null);
 
   /**
    * 設定標點的 z-index 最大值
@@ -133,14 +143,19 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
         const markersObjects = await Promise.all(
           users.map(user => {
             return new Promise<IMarkerObject>(async resolve => {
-              const dataUrl = await createCircleImageFromUrl(user.photoURL);
+              let icon: google.maps.Icon | null = null;
 
-              const marker = new google.maps.Marker({
-                icon: {
-                  url: dataUrl,
+              if (user.photoURL) {
+                const iconUrl = await createCircleImageFromUrl(user.photoURL);
+                icon = {
+                  url: iconUrl,
                   scaledSize: new google.maps.Size(50, 50),
                   anchor: new google.maps.Point(25, 25),
-                },
+                };
+              }
+
+              const marker = new google.maps.Marker({
+                icon,
                 position: { lat: user.lat, lng: user.lng },
                 map,
               });
@@ -171,7 +186,7 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
           setMarkersObjs(markersObjects);
           // 設定標點初始化完畢
           setLoadedMarkersObjs(true);
-          console.log('標點初始化完畢', markersObjects);
+          console.log('map.objects.initial.complete', markersObjects);
         }
       };
 
@@ -179,90 +194,70 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
     }
   }, [loadedMarkersObjs, map, users]);
 
-  // 將相鄰的標點群組化
-  // useEffect(() => {
-  //   if (map && geometryLibrary && markerLibrary && markersObjs && auth.currentUser) {
-  //     const groupedMarkersObjs: IMarkerObject[][] = [];
+  // 更新標點或者刪除標點
+  useEffect(() => {
+    if (loadedMarkersObjs && map && auth.currentUser) {
+      // 比對 database.users 和 state.markersObjs[n].user 差異，進行更新或刪除
+      markersObjs.forEach(markerObjs => {
+        const { user } = markerObjs;
+        const userData = users.find(u => u.uid === user.uid);
 
-  //     markersObjs.forEach(markerObj => {
-  //       const { marker } = markerObj;
+        if (userData) {
+          // 更新標點
+          markerObjs.marker.setPosition({ lat: userData.lat, lng: userData.lng });
+          markerObjs.circle?.setCenter({ lat: userData.lat, lng: userData.lng });
+          markerObjs.user = userData;
+        } else {
+          // 刪除標點
+          markerObjs.marker.setMap(null);
+          markerObjs.circle?.setMap(null);
+          markerObjs.user = null as any;
+        }
+      });
 
-  //       const markerPosition = marker.getPosition();
+      console.log('map.objects.update.complete');
+    }
+  }, [map, users, loadedMarkersObjs, markersObjs]);
 
-  //       const isGrouped = groupedMarkersObjs.some(groupedMarkersObj => {
-  //         const groupedMarker = groupedMarkersObj[0].marker;
-
-  //         const groupedMarkerPosition = groupedMarker.getPosition();
-
-  //         const distance = geometryLibrary.spherical.computeDistanceBetween(
-  //           markerPosition as google.maps.LatLng,
-  //           groupedMarkerPosition as google.maps.LatLng
-  //         );
-
-  //         if (distance < 500) {
-  //           groupedMarkersObj.push(markerObj);
-  //           return true;
-  //         }
-
-  //         return false;
-  //       });
-
-  //       if (!isGrouped) {
-  //         groupedMarkersObjs.push([markerObj]);
-  //       }
-  //     });
-
-  //     groupedMarkersObjs.forEach(groupedMarkersObj => {
-  //       const { marker } = groupedMarkersObj[0];
-
-  //       const markerPosition = marker.getPosition();
-
-  //       function computeCentroid(points: google.maps.LatLng[]) {
-  //         let totalLat = 0;
-  //         let totalLng = 0;
-
-  //         points.forEach(point => {
-  //           totalLat += point.lat();
-  //           totalLng += point.lng();
-  //         });
-
-  //         const averageLat = totalLat / points.length;
-  //         const averageLng = totalLng / points.length;
-
-  //         return new google.maps.LatLng(averageLat, averageLng);
-  //       }
-
-  //       const groupCenter = computeCentroid(
-  //         groupedMarkersObj.map(markerObj => markerObj.marker.getPosition() as google.maps.LatLng)
-  //       );
-
-  //       const distance = geometryLibrary.spherical.computeDistanceBetween(
-  //         markerPosition as google.maps.LatLng,
-  //         groupCenter
-  //       );
-
-  //       if (distance < 500) {
-  //         const circle = new google.maps.Circle({
-  //           center: groupCenter,
-  //           radius: distance,
-  //           strokeColor: 'yellow',
-  //           strokeOpacity: 1,
-  //           strokeWeight: 2,
-  //           fillColor: 'yellow',
-  //           fillOpacity: 0.25,
-  //         });
-
-  //         circle.setMap(map);
-  //       }
-  //     });
-  //   }
-  // }, [map, geometryLibrary, markerLibrary, markersObjs, auth.currentUser]);
+  // 監聽使用者位置
+  useEffect(() => {
+    setWatchId(
+      navigator.geolocation.watchPosition(
+        success => {
+          if (auth.currentUser && auth.currentUser.uid && geometryLibrary && position) {
+            // 當新座標的距離超過 10 公尺，才更新座標
+            const distance = geometryLibrary.spherical.computeDistanceBetween(
+              new google.maps.LatLng(position),
+              new google.maps.LatLng(success.coords.latitude, success.coords.longitude)
+            );
+            if (distance > 10) {
+              const p = {
+                lat: success.coords.latitude,
+                lng: success.coords.longitude,
+              };
+              console.log('map.watchPosition.complete', p);
+              setPosition(p);
+              updateUserPosition(auth.currentUser!, p);
+            }
+          }
+        },
+        error => {
+          console.error('map.watchPosition.error', error.message);
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 1000 * 10,
+          maximumAge: 1000 * 60,
+        }
+      )
+    );
+  }, [setPosition, geometryLibrary, position]);
 
   // 監聽地圖縮放事件
   useEffect(() => {
-    if (map && markersObjs && auth.currentUser) {
+    if (map && markersObjs) {
       google.maps.event.addListener(map, 'zoom_changed', () => {
-        console.log('zoom_changed');
+        console.log('map.zoom_changed.complete');
       });
     }
   }, [map, markersObjs]);
