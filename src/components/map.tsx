@@ -10,6 +10,8 @@ import { IUser, IPosition, updateUserPosition } from '@/services/firebase';
 import { createCircleImageFromUrl } from '@/utils';
 
 type MapProps = {
+  watchUser: IUser;
+  currentUser: IUser;
   users: IUser[];
 };
 
@@ -57,7 +59,7 @@ export interface MapRef {
   setWatchId: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
-const Map = forwardRef(({ users }: MapProps, ref) => {
+const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
   const mapRef = useRef<HTMLDivElement>(null);
 
   const [map, setMap] = useState<google.maps.Map>();
@@ -104,11 +106,12 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
           loader.importLibrary('marker'),
           loader.importLibrary('geometry'),
         ]);
+
         setMarkerLibrary(markerLib);
         setGeometryLibrary(geometryLibrary);
 
-        const initialPosition = {
-          lat: position.lat - 0.00002,
+        const center = {
+          lat: position.lat - 0.00005,
           lng: position.lng,
         };
 
@@ -116,7 +119,7 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
         const isMobile = /mobile/i.test(userAgent);
 
         const mapOptions: google.maps.MapOptions = {
-          center: initialPosition,
+          center,
           zoom: 20,
           // maxZoom: 20,
           // minZoom: 12,
@@ -134,11 +137,11 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
       };
       initialMap();
     }
-  }, [loadedMap, position]);
+  }, [loadedMap, position, watchUser, currentUser]);
 
   // 初始化標點
   useEffect(() => {
-    if (!loadedMarkersObjs && map && auth.currentUser) {
+    if (!loadedMarkersObjs && map) {
       const loadMarkersObjs = async () => {
         const markersObjects = await Promise.all(
           users.map(user => {
@@ -180,19 +183,21 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
         );
 
         if (markersObjects.length > 0) {
-          // 設定標點的 z-index 最大值
-          setZIndexMax(markersObjects, auth.currentUser!);
-          // 設定標點物件
+          // 設置所有標點物件
           setMarkersObjs(markersObjects);
           // 設定標點初始化完畢
           setLoadedMarkersObjs(true);
+          // 設定標點的 z-index 最大值
+          setZIndexMax(markersObjects, currentUser);
+          // 移動地圖到使用者位置
+          map.panTo({ lat: currentUser.lat - 0.00005, lng: currentUser.lng });
           console.log('map.objects.initial.complete', markersObjects);
         }
       };
 
       loadMarkersObjs();
     }
-  }, [loadedMarkersObjs, map, users]);
+  }, [loadedMarkersObjs, map, users, currentUser]);
 
   // 更新標點或者刪除標點
   useEffect(() => {
@@ -215,29 +220,41 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
         }
       });
 
+      // 移動至追蹤者位置
+      map.panTo({ lat: watchUser.lat - 0.00005, lng: watchUser.lng });
+      // 設定標點的 z-index 最大值
+      setZIndexMax(markersObjs, watchUser);
+
       console.log('map.objects.update.complete');
     }
-  }, [map, users, loadedMarkersObjs, markersObjs]);
+  }, [map, users, loadedMarkersObjs, markersObjs, watchUser]);
 
-  // 監聽使用者位置
+  // 監聽 currentUser 位置
   useEffect(() => {
     setWatchId(
       navigator.geolocation.watchPosition(
         success => {
-          if (auth.currentUser && auth.currentUser.uid && geometryLibrary && position) {
+          if (map && geometryLibrary && position) {
             // 當新座標的距離超過 10 公尺，才更新座標
             const distance = geometryLibrary.spherical.computeDistanceBetween(
               new google.maps.LatLng(position),
               new google.maps.LatLng(success.coords.latitude, success.coords.longitude)
             );
+
             if (distance > 10) {
               const p = {
                 lat: success.coords.latitude,
                 lng: success.coords.longitude,
               };
-              console.log('map.watchPosition.complete', p);
+              // 更新本地儲存的 currentUser 座標
               setPosition(p);
-              updateUserPosition(auth.currentUser!, p);
+              // 更新 currentUser 座標
+              updateUserPosition(currentUser, p);
+              // 移動至追蹤者位置
+              map.panTo({ lat: watchUser.lat - 0.00005, lng: watchUser.lng });
+              // 設定標點的 z-index 最大值
+              setZIndexMax(markersObjs, watchUser);
+              console.log('map.watchPosition.complete', distance, p);
             }
           }
         },
@@ -251,7 +268,7 @@ const Map = forwardRef(({ users }: MapProps, ref) => {
         }
       )
     );
-  }, [setPosition, geometryLibrary, position]);
+  }, [geometryLibrary, setPosition, position, markersObjs, currentUser, watchUser, map]);
 
   // 監聽地圖縮放事件
   useEffect(() => {

@@ -67,7 +67,7 @@ export const updateUser = async (user: User, position?: IPosition) => {
  * @param user
  * @param position
  */
-export const updateUserPosition = async (user: User, position: IPosition) => {
+export const updateUserPosition = async (user: User | IUser, position: IPosition) => {
   const payload = {
     ...position,
     updateAt: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
@@ -22,37 +22,41 @@ export default function Home() {
 
   const [users, setUsers] = useState<IUser[]>([]);
 
+  const [currentUser, setCurrentUser] = useState<IUser>();
+
   const [isMinimized, setIsMinimized] = useState(false);
+
+  const [watchUser, setWatchUser] = useState<IUser>();
 
   const onMapToUser = (user: IUser) => {
     if (mapRef.current) {
       const { lat, lng } = user;
       // 由於下方用戶列表會擋住畫面，因此做 lat 的微調
-      mapRef.current.map.panTo({ lat: lat - 0.00002, lng });
+      mapRef.current.map.panTo({ lat: lat - 0.00005, lng });
       mapRef.current.setZIndexMax(mapRef.current.markersObjs, user);
+      // 監控選擇的用戶
+      setWatchUser(user);
     }
   };
 
   const onUpdateMyLocation = () => {
     setLoadingMyLocation(true);
 
-    // 如果有手動更新過位置，則以手動更新的位置為主
-    if (mapRef.current && position) {
-      mapRef.current.map.setCenter({ lat: position.lat - 0.00002, lng: position.lng });
-      mapRef.current.map.setZoom(20);
-    }
-
     // 從瀏覽器定位取得位置
     navigator.geolocation.getCurrentPosition(
       success => {
-        if (auth.currentUser && auth.currentUser.uid) {
+        if (mapRef.current && currentUser) {
           const p = {
             lat: success.coords.latitude,
             lng: success.coords.longitude,
           };
           setPosition(p);
-          updateUserPosition(auth.currentUser!, p);
-          mapRef.current?.map.setCenter({ lat: p.lat - 0.00002, lng: p.lng });
+          setWatchUser(currentUser);
+
+          updateUserPosition(currentUser, p);
+
+          mapRef.current.map.setCenter({ lat: p.lat - 0.00005, lng: p.lng });
+          mapRef.current.setZIndexMax(mapRef.current.markersObjs, currentUser);
         }
         setLoadingMyLocation(false);
       },
@@ -62,7 +66,7 @@ export default function Home() {
       },
       {
         enableHighAccuracy: false,
-        timeout: 1000 * 5,
+        timeout: 1000 * 10,
         // maximumAge: 1000 * 10,
       }
     );
@@ -89,9 +93,16 @@ export default function Home() {
     const unsubscribe = subscribeToUsers(newUsers => {
       console.log('home.subscribeToUsers.complete', newUsers);
       setUsers(newUsers);
+
+      // 如果 currentUser 沒數據，則設置為 auth.currentUser
+      if (!currentUser) {
+        const cuser = newUsers.find(u => u.uid === auth.currentUser?.uid);
+        setCurrentUser(cuser);
+        setWatchUser(cuser);
+      }
     });
     return () => unsubscribe();
-  }, [setUsers]);
+  }, [setUsers, watchUser, currentUser]);
 
   // 如果 googleUser 沒數據則跳轉到登入頁
   useEffect(() => {
@@ -140,16 +151,13 @@ export default function Home() {
   };
 
   const renderUserList = () => {
-    // 找到 currentUser 的資料
-    const currentUser = users.find(user => user.uid === auth.currentUser?.uid);
-
     // 將 currentUser 設置為第一筆，並且依照相鄰距離排序
     const usersSorted = currentUser
       ? [
           currentUser,
           ...users
             // 排除 currentUser
-            .filter(user => user.uid !== auth.currentUser?.uid)
+            .filter(user => user.uid !== currentUser.uid)
             // 依照 currentUser 的 lat,lng 相鄰距離排序
             .sort((a, b) => {
               // 根據用戶對於 currentUser 的距離排序
@@ -181,13 +189,13 @@ export default function Home() {
     );
   };
 
+  if (!currentUser || !watchUser) return;
+
   return (
-    auth.currentUser && (
-      <div>
-        <CustomMap ref={mapRef} users={users} />
-        {renderMapControls()}
-        {renderUserList()}
-      </div>
-    )
+    <div>
+      <CustomMap ref={mapRef} users={users} currentUser={currentUser} watchUser={watchUser} />
+      {renderMapControls()}
+      {renderUserList()}
+    </div>
   );
 }
