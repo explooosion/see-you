@@ -152,20 +152,10 @@ export default function Home() {
             .filter(user => user.uid !== auth.currentUser?.uid)
             // 依照 currentUser 的 lat,lng 相鄰距離排序
             .sort((a, b) => {
-              // 使用 computeDistanceBetween 計算距離
-              if (mapRef.current && mapRef.current.geometryLibrary) {
-                const aDistance = mapRef.current.geometryLibrary.spherical.computeDistanceBetween(
-                  new google.maps.LatLng(a.lat, a.lng),
-                  new google.maps.LatLng(currentUser!.lat, currentUser!.lng)
-                );
-                const bDistance = mapRef.current.geometryLibrary.spherical.computeDistanceBetween(
-                  new google.maps.LatLng(b.lat, b.lng),
-                  new google.maps.LatLng(currentUser!.lat, currentUser!.lng)
-                );
-                return aDistance - bDistance;
-              } else {
-                return 0;
-              }
+              // 根據用戶對於 currentUser 的距離排序
+              const distanceA = Math.sqrt(Math.pow(a.lat - currentUser.lat, 2) + Math.pow(a.lng - currentUser.lng, 2));
+              const distanceB = Math.sqrt(Math.pow(b.lat - currentUser.lat, 2) + Math.pow(b.lng - currentUser.lng, 2));
+              return distanceA - distanceB;
             }),
         ]
       : users;
