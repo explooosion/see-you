@@ -62,7 +62,7 @@ export interface MapRef {
 /**
  * 用於調整經度的間隔，使畫面中心不會偏移
  */
-export const LatGapCenter = 0.00005;
+export const LatGapCenter = 0.00008;
 
 const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -245,21 +245,16 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
               new google.maps.LatLng(success.coords.latitude, success.coords.longitude)
             );
 
-            if (distance > 10) {
+            if (distance > 5) {
               const p = {
                 lat: success.coords.latitude,
                 lng: success.coords.longitude,
               };
-              // 更新本地儲存的 currentUser 座標
-              setPosition(p);
               // 更新 currentUser 座標
               updateUserPosition(currentUser, p);
-              // 移動至追蹤者位置
-              map.panTo({ lat: watchUser.lat - LatGapCenter, lng: watchUser.lng });
-              // 設定標點的 z-index 最大值
-              setZIndexMax(markersObjs, watchUser);
-              console.log('map.watchPosition.complete', distance, p);
+              console.log('map.watchPosition.complete', distance);
             }
+            console.log('map.watchPosition.ignore', distance);
           }
         },
         error => {
@@ -272,7 +267,26 @@ const Map = forwardRef(({ users, currentUser, watchUser }: MapProps, ref) => {
         }
       )
     );
-  }, [geometryLibrary, setPosition, position, markersObjs, currentUser, watchUser, map]);
+  }, [geometryLibrary, map, currentUser, position]);
+
+  // 監聽 currentUser 位置
+  useEffect(() => {
+    if (currentUser) {
+      const { lat, lng } = currentUser;
+      setPosition({ lat, lng });
+      console.log('map.setPosition.complete');
+    }
+  }, [currentUser, setPosition]);
+
+  // 監聽 watchUser 位置
+  useEffect(() => {
+    if (map) {
+      // 移動至追蹤者位置
+      map.panTo({ lat: watchUser.lat - LatGapCenter, lng: watchUser.lng });
+      // 設定標點的 z-index 最大值
+      setZIndexMax(markersObjs, watchUser);
+    }
+  }, [map, markersObjs, watchUser]);
 
   // 監聽地圖縮放事件
   useEffect(() => {

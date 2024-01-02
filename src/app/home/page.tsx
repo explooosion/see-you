@@ -71,28 +71,34 @@ export default function Home() {
     }
   };
 
+  // 監聽 users 數據
   useEffect(() => {
-    setUnsubscribe(
-      subscribeToUsers(newUsers => {
+    if (!unsubscribe) {
+      const unsubscribeCaller = subscribeToUsers(newUsers => {
         setUsers(newUsers);
-        console.log('home.subscribeToUsers.complete', newUsers);
-
-        // 如果 currentUser 沒數據，則設置為 auth.currentUser
-        if (!currentUser) {
-          const cuser = newUsers.find(u => u.uid === auth.currentUser?.uid);
-          setCurrentUser(cuser);
-        }
-      })
-    );
+      });
+      setUnsubscribe(unsubscribeCaller);
+      console.log('home.setUnsubscribe.complete');
+    }
     return () => unsubscribe && unsubscribe();
-  }, [setUsers, currentUser, unsubscribe]);
+  }, [setUsers, unsubscribe]);
 
   // 如果 watchUser 沒數據，則設置為 currentUser
   useEffect(() => {
     if (currentUser && !watchUser) {
       setWatchUser(currentUser);
+      console.log('home.setWatchUser.complete', currentUser);
     }
   }, [currentUser, watchUser]);
+
+  // 如果有 users 數據，則設置 setCurrentUser
+  useEffect(() => {
+    if (users) {
+      const cuser = users.find(u => u.uid === auth.currentUser?.uid);
+      setCurrentUser(cuser);
+      console.log('home.setCurrentUser.complete', cuser);
+    }
+  }, [users]);
 
   // 如果 googleUser 沒數據則跳轉到登入頁
   useEffect(() => {
